@@ -4,6 +4,7 @@ Kavşak bazlı **canlı trafik sayımı ve yoğunluk izleme** uygulaması. Harit
 
 - Web paneli: Flask + Leaflet harita (`app.py`, `templates/index.html`)
 - Masaüstü sürümü: Tkinter arayüzü (`trafik_arayuz.py`)
+- Canlı tanıtım sayfası (GitHub Pages): [https://darkeaglehome.github.io/trafik-sayim-paneli/](https://darkeaglehome.github.io/trafik-sayim-paneli/)
 - Geliştirici: [Darkeaglehome](https://github.com/Darkeaglehome)
 
 > English version: [README.en.md](README.en.md)
@@ -203,6 +204,15 @@ Kayıtlar 60 saniyelik pencerelerde birikir; `vehicle_count` o pencerede gerçek
 ## Canlıya Alma (Deploy)
 
 Uygulama tek süreçte çalışır (içinde arka plan izleme thread'i ve SQLite var), bu yüzden **tek worker** ile yayınlanmalıdır.
+
+### GitHub Pages (tanıtım sayfası)
+
+Depodaki `docs/index.html` statik tanıtım sayfası GitHub Pages ile yayınlanır:
+
+- Yayın adresi: [https://darkeaglehome.github.io/trafik-sayim-paneli/](https://darkeaglehome.github.io/trafik-sayim-paneli/)
+- Kaynak: `main` dalı, `/docs` klasörü
+
+> GitHub Pages yalnızca statik dosya sunar; Flask + SQLite + arka plan thread'i gerektiren gerçek panel Pages üzerinde çalışmaz. Paneli canlıya almak için aşağıdaki Render/VPS adımlarını kullanın.
 
 ### Render / benzeri PaaS
 

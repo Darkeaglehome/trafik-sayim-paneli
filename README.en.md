@@ -4,6 +4,7 @@ An **intersection-level live traffic counting and congestion monitoring** app. F
 
 - Web panel: Flask + Leaflet map (`app.py`, `templates/index.html`)
 - Desktop version: Tkinter UI (`trafik_arayuz.py`)
+- Live landing page (GitHub Pages): [https://darkeaglehome.github.io/trafik-sayim-paneli/](https://darkeaglehome.github.io/trafik-sayim-paneli/)
 - Author: [Darkeaglehome](https://github.com/Darkeaglehome)
 
 > Türkçe sürüm: [README.md](README.md)
