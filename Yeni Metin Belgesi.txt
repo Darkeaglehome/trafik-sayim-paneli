@@ -1,0 +1,126 @@
+import osmnx as ox
+import requests
+import sqlite3
+import time
+from datetime import datetime
+
+# --- YAPILANDIRMA ---
+CENTER_LAT = 41.0082  # Kavþak Merkez Enlem
+CENTER_LON = 28.9784  # Kavþak Merkez Boylam
+RADIUS_METERS = 500
+DB_NAME = "osrm_intersection_traffic.db"
+
+# Ücretsiz kamusal OSRM sunucusu (Herhangi bir API anahtarý istemez)
+OSRM_SERVER_URL = "http://router.project-osrm.org"
+
+def init_db():
+    """Veritabaný ve log tablosunu oluþturur."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS live_traffic_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            arm_name TEXT NOT NULL,
+            distance_m REAL,
+            duration_s REAL,
+            estimated_queue_load INTEGER
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def get_automatic_arms(lat, lon, radius):
+    """OSM üzerinden merkeze baðlanan kollarý otomatik tespit eder."""
+    print("OSM üzerinden kavþak kollarý taranýyor...")
+    try:
+        G = ox.graph_from_point((lat, lon), dist=radius, network_type='drive')
+        center_node = ox.distance.nearest_nodes(G, lon, lat)
+        neighbors = list(G.neighbors(center_node))
+        
+        arms = {}
+        directions = ["Kuzey_Kol", "Guney_Kol", "Dogu_Kol", "Bati_Kol", "KuzeyDogu_Kol", "GuneyBati_Kol"]
+        
+        for i, n_node in enumerate(neighbors[:6]): # En fazla 6 kol alalým
+            n_data = G.nodes[n_node]
+            arm_name = directions[i] if i < len(directions) else f"Kol_{i+1}"
+            arms[arm_name] = {"lat": n_data['y'], "lon": n_data['x']}
+            
+        print(f"Toplam {len(arms)} kol otomatik olarak belirlendi.")
+        return arms
+    except Exception as e:
+        print(f"OSM Kol tespiti sýrasýnda hata: {e}")
+        return {}
+
+def fetch_osrm_route(origin_lat, origin_lon, dest_lat, dest_lon):
+    """
+    OSRM (Open Source Routing Machine) kullanarak iki nokta arasýndaki 
+    mesafeyi ve seyahat süresini tamamen ücretsiz olarak çeker.
+    Format: {lon},{lat};{lon},{lat}
+    """
+    url = f"{OSRM_SERVER_URL}/route/v1/driving/{origin_lon},{origin_lat};{dest_lon},{dest_lat}?overview=false"
+    
+    try:
+        response = requests.get(url, timeout=10).json()
+        if response.get("code") == "Ok":
+            route = response["routes"][0]
+            distance = route["distance"]     # Metre cinsinden mesafe
+            duration = route["duration"]     # Saniye cinsinden tahmini süre
+            return distance, duration
+    except Exception as e:
+        print(f"OSRM Sorgu Hatasý: {e}")
+        
+    return 0, 0
+
+def run_realtime_monitor():
+    init_db()
+    arms = get_automatic_arms(CENTER_LAT, CENTER_LON, RADIUS_METERS)
+    
+    if not arms:
+        print("Hata: Kol bulunamadýðý için sistem baþlatýlamadý.")
+        return
+
+    print("\n" + "="*50)
+    print(" OSRM ÜCRETSÝZ CANLI TAKÝP SÝSTEMÝ BAÞLATILDI (1 Dakikalýk Döngü)")
+    print(" Durdurmak için CTRL+C tuþlarýna basýn.")
+    print("="*50 + "\n")
+    
+    try:
+        while True:
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"[{current_time}] Veriler güncelleniyor...")
+            
+            conn = sqlite3.connect(DB_NAME)
+            cursor = conn.cursor()
+            
+            for arm_name, coords in arms.items():
+                # Koldan kavþak merkezine doðru OSRM ile rota sorgusu
+                dist, duration = fetch_osrm_route(
+                    coords["lat"], coords["lon"], CENTER_LAT, CENTER_LON
+                )
+                
+                if dist > 0:
+                    # Basit bir kuyruk/yük simülasyon metriði
+                    estimated_queue = int(duration / 10) 
+                    
+                    # Veritabanýna kaydet
+                    cursor.execute('''
+                        INSERT INTO live_traffic_logs (timestamp, arm_name, distance_m, duration_s, estimated_queue_load)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (current_time, arm_name, dist, duration, estimated_queue))
+                    
+                    print(f"  -> {arm_name}: Mesafe: {dist:.1f}m | Seyahat Süresi: {duration:.1f}sn")
+                else:
+                    print(f"  -> {arm_name}: OSRM verisi alýnamadý.")
+            
+            conn.commit()
+            conn.close()
+            
+            # 1 dakika (60 saniye) bekleyip döngüyü tekrarla
+            time.sleep(60)
+            
+    except KeyboardInterrupt:
+        print("\nSistem kullanýcý tarafýndan durduruldu. Veriler veritabanýna kaydedildi.")
+
+if __name__ == "__main__":
+    run_realtime_monitor()

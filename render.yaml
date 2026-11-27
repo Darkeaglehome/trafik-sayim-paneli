@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: trafik-sayim-paneli
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 300
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.6
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: trafik-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Yerel veri ve çıktılar
+*.db
+*.db-journal
+*.xlsx
+*.log
+cache/
+
+# Ortam / editör
+.env
+.idea/
+.vscode/
+.DS_Store

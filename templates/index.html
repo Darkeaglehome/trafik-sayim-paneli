@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trafik Sayım Paneli</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Segoe UI", Tahoma, sans-serif; }
+  body { background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+  header { background: #1e293b; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #3b82f6; }
+  header h1 { font-size: 20px; font-weight: 700; }
+  header h1 span { color: #60a5fa; }
+  .status-pill { padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+  .clock { font-family: Consolas, monospace; font-size: 15px; font-weight: 600; color: #60a5fa; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 7px 14px; }
+  .status-pill.off { background: #450a0a; color: #fca5a5; border: 1px solid #b91c1c; }
+  .status-pill.on { background: #052e16; color: #86efac; border: 1px solid #16a34a; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+  .control-card { background: #1e293b; border-radius: 14px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+  .control-grid { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 12px; color: #94a3b8; font-weight: 600; }
+  .field input { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 14px; width: 150px; outline: none; }
+  .field input:focus { border-color: #3b82f6; }
+  .search-field { flex: 1; min-width: 260px; }
+  .search-row { display: flex; gap: 8px; }
+  .search-row input { flex: 1; width: auto; }
+  .btn { border: none; border-radius: 8px; padding: 12px 20px; font-size: 14px; font-weight: 700; cursor: pointer; color: white; transition: opacity .2s; }
+  .btn:hover { opacity: .85; }
+  .btn-start { background: #16a34a; }
+  .btn-stop { background: #dc2626; }
+  .btn-excel { background: #d97706; }
+  .btn-report { background: #0ea5e9; }
+  .btn-blue { background: #3b82f6; }
+  .btn-search { background: #3b82f6; padding: 10px 18px; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  .main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+  .right-col { display: flex; flex-direction: column; gap: 20px; }
+  .panel { background: #1e293b; border-radius: 14px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+  .panel h2 { font-size: 13px; color: #94a3b8; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .last-update { font-size: 13px; color: #64748b; margin-top: 10px; }
+
+  .map { width: 100%; height: 520px; border-radius: 12px; background: #1e293b; z-index: 0; }
+  .last-update { font-size: 13px; color: #64748b; margin-top: 10px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 6px 8px; font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #334155; }
+  td { padding: 6px 8px; font-size: 12px; border-bottom: 1px solid #1f2937; }
+  .q-badge { padding: 3px 8px; border-radius: 999px; font-weight: 700; font-size: 11px; }
+  .q-low { background: #052e16; color: #86efac; }
+  .q-mid { background: #451a03; color: #fcd34d; }
+  .q-high { background: #450a0a; color: #fca5a5; }
+  /* Gerçek hız: arka plan yok, sadece renkli yazı */
+  .spd-low { color: #86efac; font-weight: 700; }
+  .spd-mid { color: #fcd34d; font-weight: 700; }
+  .spd-high { color: #fca5a5; font-weight: 700; }
+  /* Saatlik araç sayısı: kollar arasında göreli 3 kademe — az yeşil, ortada sarı, en fazla kırmızı */
+  .t-green { color: #22c55e; font-weight: 700; }
+  .t-yellow { color: #facc15; font-weight: 700; }
+  .t-red { color: #ef4444; font-weight: 700; }
+
+  .leaflet-tooltip {
+    font-size: 10px; padding: 2px 6px; border-radius: 4px; line-height: 1.3;
+    background: rgba(15,23,42,.92); border: 1px solid #334155; color: #e2e8f0;
+    box-shadow: 0 1px 4px rgba(0,0,0,.4); font-weight: 600;
+  }
+  .leaflet-tooltip-top:before { border-top-color: #334155; }
+  .leaflet-tooltip-bottom:before { border-bottom-color: #334155; }
+  .leaflet-tooltip-left:before { border-left-color: #334155; }
+  .leaflet-tooltip-right:before { border-right-color: #334155; }
+
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1e293b; color: #e2e8f0; padding: 12px 20px; border-radius: 10px; border-left: 4px solid #3b82f6; box-shadow: 0 4px 16px rgba(0,0,0,.5); opacity: 0; transition: opacity .3s; z-index: 99; }
+  .toast.show { opacity: 1; }
+  .loader { display: inline-block; width: 16px; height: 16px; border: 2px solid #334155; border-top-color: #60a5fa; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Trafik</span> Sayım ve Yoğunluk Paneli</h1>
+  <div style="display:flex;align-items:center;gap:16px">
+    <div id="liveClock" class="clock">-</div>
+    <div id="statusPill" class="status-pill off">DURAKLATILDI</div>
+  </div>
+</header>
+
+<div class="container">
+  <div class="control-card">
+    <div class="control-grid">
+      <div class="field">
+        <label>Enlem (Lat / X)</label>
+        <input type="number" step="any" id="lat" value="41.0082">
+      </div>
+      <div class="field">
+        <label>Boylam (Lon / Y)</label>
+        <input type="number" step="any" id="lon" value="28.9784">
+      </div>
+      <div class="field search-field">
+        <label>Yer Ara (örn: Sancaktepe Atatürk Caddesi)</label>
+        <div class="search-row">
+          <input type="text" id="searchQuery" placeholder="Adres veya yer arayın..." onkeydown="if(event.key==='Enter')searchPlace()">
+          <button class="btn btn-search" onclick="searchPlace()">Ara</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Sağlayıcı</label>
+        <select id="provider" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:8px;padding:10px 12px;font-size:14px;outline:none">
+          <option value="osrm">OSRM (ücretsiz)</option>
+          <option value="tomtom">TomTom</option>
+          <option value="here">Here.com</option>
+          <option value="google">Google Routes</option>
+        </select>
+      </div>
+      <div class="field search-field">
+        <label>API Anahtarı (boş bırakılırsa OSRM kullanılır)</label>
+        <input type="password" id="apiKey" placeholder="Canlı trafik API anahtarı" style="width:100%">
+      </div>
+      <div class="field">
+        <label>Trafik Sinyali</label>
+        <label style="display:flex;align-items:center;gap:8px;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px 12px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="signalized" checked onchange="toggleSignalized()" style="width:16px;height:16px;accent-color:#3b82f6;cursor:pointer">
+          <span style="font-size:13px;color:#e2e8f0;font-weight:600">Sinyalize Kavşak</span>
+        </label>
+      </div>
+      <button class="btn btn-blue" id="btnAddArms" onclick="addArms()">Kolları Ekle</button>
+      <button class="btn btn-start" id="btnStart" onclick="startMonitor()">İzlemeyi Başlat</button>
+      <button class="btn btn-stop" id="btnStop" onclick="stopMonitor()" disabled>Durdur</button>
+      <button class="btn btn-excel" onclick="exportExcel()">Excel'e Aktar</button>
+      <button class="btn btn-report" onclick="exportReport()">Raporu Kaydet</button>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:12px;color:#94a3b8;font-weight:600">İşaretli Noktalar (haritaya tıklayın):</span>
+      <div id="markedList" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <button class="btn btn-search" onclick="clearMarked()" style="padding:6px 12px">Temizle</button>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <div class="panel">
+      <h2>Canlı Kavşak Görünümü (OSM)</h2>
+      <div id="map" class="map"></div>
+      <div class="last-update" id="lastUpdate">Henüz veri alınmadı</div>
+    </div>
+
+    <div class="right-col">
+      <div class="panel">
+        <h2>Kol Analizi</h2>
+        <table>
+          <thead><tr><th>Kol</th><th>Mesafe (m)</th><th>Süre (sn)</th><th>Kuyruk Yükü</th></tr></thead>
+          <tbody id="armRows"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Anlık Araç Sayımı</h2>
+        <table>
+          <thead><tr><th>Kol</th><th>Şerit</th><th>Gerçek Hız</th><th>Anlık Geçen Araç</th></tr></thead>
+          <tbody id="countRows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top: 20px;">
+    <h2>Saat Bazlı Araç Sayımı — bu saat: <span id="hourLabel" style="color:#60a5fa">-</span></h2>
+    <table>
+      <thead><tr><th>Kol</th><th>Bu Saat Geçen Araç</th><th>Toplam Geçen Araç</th></tr></thead>
+      <tbody id="hourRows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let pollTimer = null;
+let autoPollTimer = null;
+let map, armLayer, centerMarker, mapReady = false, lastCoord = null, selMarker = null, armSelMarker = null;
+let selCoord = null, monitoring = false;
+let markedPoints = [], markedLayer = null, markIdx = 0;
+const DEFAULT_VIEW = { lat: 41.0082, lon: 28.9784 };
+const ARM_COLORS = ['#60a5fa', '#f59e0b', '#22c55e', '#ef4444', '#a78bfa', '#2dd4bf', '#fb7185', '#eab308', '#38bdf8', '#f97316'];
+
+function armColor(i) { return ARM_COLORS[i % ARM_COLORS.length]; }
+function armLabel(arm) { return arm.street ? arm.name + ' (' + arm.street + ')' : arm.name; }
+function armDot(color) {
+  return '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + color + ';margin-right:7px;vertical-align:middle"></span>';
+}
+function hourRange(hkey) {
+  const parts = hkey.split(' ');
+  const hms = parts[parts.length - 1];
+  const hm = hms.split(':').map(Number);
+  const h = hm[0] || 0, m = hm[1] || 0;
+  const total = h * 60 + m + 60;
+  const eh = Math.floor(total / 60) % 24;
+  const em = total % 60;
+  const p = n => (n < 10 ? '0' : '') + n;
+  return p(h) + ':' + p(m) + ' - ' + p(eh) + ':' + p(em);
+}
+
+function toast(msg, ok) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderLeftColor = ok === false ? '#dc2626' : '#3b82f6';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+function initMap() {
+  if (mapReady) return;
+  map = L.map('map').setView([DEFAULT_VIEW.lat, DEFAULT_VIEW.lon], 17);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+  armLayer = L.layerGroup().addTo(map);
+  markedLayer = L.layerGroup().addTo(map);
+  centerMarker = L.circleMarker([DEFAULT_VIEW.lat, DEFAULT_VIEW.lon], {
+    radius: 8, color: '#ffffff', weight: 3, fillColor: '#3b82f6', fillOpacity: 1
+  }).addTo(map).bindTooltip('Kavşak Merkezi', { permanent: true, direction: 'top', offset: [0, -10] });
+  map.on('contextmenu', function(e) {
+    const lat = e.latlng.lat.toFixed(6);
+    const lon = e.latlng.lng.toFixed(6);
+    document.getElementById('lat').value = lat;
+    document.getElementById('lon').value = lon;
+    centerMarker.setLatLng([e.latlng.lat, e.latlng.lng]);
+    if (selMarker) map.removeLayer(selMarker);
+    selMarker = L.circleMarker([e.latlng.lat, e.latlng.lng], {
+      radius: 7, color: '#ffffff', weight: 2, fillColor: '#d946ef', fillOpacity: 1
+    }).addTo(map).bindTooltip(`Seçilen: ${lat}, ${lon}`, { permanent: true, direction: 'top', offset: [0, -6] }).openTooltip();
+    setTimeout(() => toast(`Koordinat atandı: ${lat}, ${lon}`), 0);
+  });
+  map.on('click', function(e) {
+    addMarkedPoint(e.latlng.lat, e.latlng.lng);
+  });
+  mapReady = true;
+}
+
+function addMarkedPoint(lat, lon) {
+  markedPoints.push({ lat: lat, lon: lon, id: ++markIdx });
+  const m = L.circleMarker([lat, lon], {
+    radius: 8, color: '#ffffff', weight: 2, fillColor: '#22c55e', fillOpacity: 1
+  }).addTo(markedLayer).bindTooltip(`Nokta ${markIdx}: ${lat.toFixed(6)}, ${lon.toFixed(6)}`, { permanent: true, direction: 'top', offset: [0, -8] }).openTooltip();
+  markedLayer.addLayer(m);
+  renderMarkedList();
+  toast(`Nokta ${markIdx} işaretlendi (${lat.toFixed(5)}, ${lon.toFixed(5)}) — yön otomatik belirlenecek.`);
+}
+
+function renderMarkedList() {
+  const box = document.getElementById('markedList');
+  box.innerHTML = '';
+  markedPoints.forEach((p, i) => {
+    const chip = document.createElement('span');
+    chip.style.cssText = 'background:#0f172a;border:1px solid #334155;color:#86efac;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600';
+    chip.textContent = `${i + 1}: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`;
+    chip.title = 'Tıkla ve kaldır';
+    chip.style.cursor = 'pointer';
+    chip.onclick = () => { markedPoints.splice(i, 1); markedLayer.clearLayers(); markedPoints.forEach(p2 => {
+      const m = L.circleMarker([p2.lat, p2.lon], { radius: 8, color: '#ffffff', weight: 2, fillColor: '#22c55e', fillOpacity: 1 }).addTo(markedLayer).bindTooltip(`Nokta ${p2.id}: ${p2.lat.toFixed(6)}, ${p2.lon.toFixed(6)}`, { permanent: true, direction: 'top', offset: [0, -8] }).openTooltip();
+      markedLayer.addLayer(m);
+    }); renderMarkedList(); };
+    box.appendChild(chip);
+  });
+}
+
+async function clearMarked() {
+  // Sunucudaki kolları, izlemeyi ve verileri sıfırla (tam temizlik)
+  try { await fetch('/api/clear', { method: 'POST' }); } catch (e) {}
+  markedPoints = [];
+  if (markedLayer) markedLayer.clearLayers();
+  if (armLayer) armLayer.clearLayers();
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  // Global auto-poll'u da durdur — Temizle sonrası bir daha veri çekilmesin
+  if (autoPollTimer) { clearInterval(autoPollTimer); autoPollTimer = null; }
+  lastCoord = null;
+  renderMarkedList();
+  // Tabloları temizle
+  document.getElementById('armRows').innerHTML = '<tr><td colspan="5" style="color:#64748b">Kollar bulunamadı.</td></tr>';
+  document.getElementById('countRows').innerHTML = '<tr><td colspan="3" style="color:#64748b">Henüz sayım verisi yok.</td></tr>';
+  document.getElementById('hourRows').innerHTML = '<tr><td colspan="3" style="color:#64748b">Henüz saatlik veri yok.</td></tr>';
+  document.getElementById('hourLabel').textContent = '-';
+  document.getElementById('lastUpdate').textContent = 'Henüz veri alınmadı';
+  document.getElementById('statusPill').textContent = 'DURAKLATILDI';
+  document.getElementById('statusPill').className = 'status-pill off';
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnStart').textContent = 'İzlemeyi Başlat';
+  document.getElementById('btnStop').disabled = true;
+  toast('Harita ve kollar temizlendi.');
+}
+
+async function searchPlace() {
+  const q = document.getElementById('searchQuery').value.trim();
+  if (!q) { toast('Arama yapmak için bir yer adı girin.', false); return; }
+  initMap();
+  try {
+    const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q) + '&limit=1',
+      { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    if (!data.length) { toast('Sonuç bulunamadı: ' + q, false); return; }
+    const lat = parseFloat(data[0].lat), lon = parseFloat(data[0].lon);
+    document.getElementById('lat').value = lat.toFixed(6);
+    document.getElementById('lon').value = lon.toFixed(6);
+    centerMarker.setLatLng([lat, lon]);
+    map.setView([lat, lon], 17);
+    toast('Bulundu: ' + (data[0].display_name || q));
+  } catch (e) { toast('Arama yapılamadı.', false); }
+}
+
+function currentPoints() {
+  if (markedPoints.length) {
+    return markedPoints.map(p => [p.lat, p.lon]);
+  }
+  const lat = parseFloat(document.getElementById('lat').value);
+  const lon = parseFloat(document.getElementById('lon').value);
+  if (isNaN(lat) || isNaN(lon)) return null;
+  return [[lat, lon]];
+}
+
+async function addArms() {
+  // Her işaretli nokta bir koldur — kol sayısında sınır yok.
+  const coords = currentPoints();
+  if (!coords) { toast('Geçerli koordinat girin veya haritada nokta işaretleyin.', false); return; }
+  const btn = document.getElementById('btnAddArms');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loader"></span>Ekleniyor...';
+  try {
+    const res = await fetch('/api/detect', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coords })
+    });
+    const data = await res.json();
+    btn.disabled = false;
+    btn.textContent = 'Kolları Ekle';
+    if (!res.ok) { toast(data.error || 'Kol eklenemedi.', false); return; }
+    renderDetected(data);
+    toast(data.arms.length + ' kol hazır. Yeni kol için haritaya tıklamaya devam edin.');
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Kolları Ekle';
+    toast('Sunucuya bağlanılamadı.', false);
+  }
+}
+
+function renderDetected(data) {
+  // /api/detect yanıtını /api/status formatına çevirip tablo + haritayı günceller
+  const view = {
+    running: false, detecting: false, detect_error: null,
+    coord: data.coord, arms: data.arms || [],
+    live: {}, counts: {}, hourly: {},
+    last_update: null, source: 'osrm', provider: 'osrm'
+  };
+  renderCrossroad(view);
+  renderTable(view);
+  renderCounts(view);
+  renderHourly(view);
+  document.getElementById('statusPill').textContent = data.arms.length + ' KOL EKLENDİ';
+  document.getElementById('statusPill').className = 'status-pill off';
+  document.getElementById('lastUpdate').textContent = 'Kollar hazır — İzlemeyi Başlat ile canlı veriye geçin.';
+}
+
+// Sinyalize kavşak onay kutusu: tikli = yeşil payıyla sayım, tiksiz = kesintisiz sayım
+async function toggleSignalized() {
+  const val = document.getElementById('signalized').checked;
+  try {
+    await fetch('/api/signalize', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signalized: val })
+    });
+    toast(val ? 'Sinyalize kavşak: sayım sinyal kısıtıyla (%45 yeşil) yapılacak.' : 'Sinyalsiz kavşak: araçlar kesintisiz geçecek.');
+  } catch (e) { toast('Güncellenemedi.', false); }
+}
+
+async function startMonitor() {
+  const provider = document.getElementById('provider').value;
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (provider !== 'osrm' && !apiKey) { toast('Seçili sağlayıcı için API anahtarı girin veya OSRM\'i seçin.', false); return; }
+
+  const coords = currentPoints();
+  if (!coords) { toast('Geçerli koordinat girin veya haritada nokta işaretleyin.', false); return; }
+  const payload = { coords, provider, api_key: apiKey, signalized: document.getElementById('signalized').checked };
+
+  const btn = document.getElementById('btnStart');
+  btn.disabled = true; btn.innerHTML = '<span class="loader"></span>Taranıyor...';
+  try {
+    const res = await fetch('/api/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Hata', false); btn.disabled = false; btn.textContent = 'İzlemeyi Başlat'; return; }
+    btn.innerHTML = '<span class="loader"></span>Kollar Tespit Ediliyor...';
+    startPolling();
+  } catch (e) { toast('Sunucuya bağlanılamadı.', false); btn.disabled = false; btn.textContent = 'İzlemeyi Başlat'; }
+}
+
+async function stopMonitor() {
+  try { await fetch('/api/stop', { method: 'POST' }); } catch (e) {}
+  document.getElementById('btnStop').disabled = true;
+  const btn = document.getElementById('btnStart');
+  btn.disabled = false;
+  btn.textContent = 'İzlemeyi Başlat';
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  // Kollar korunduğu için son durumu bir kez yeniden çiz (seçimler kaybolmasın)
+  poll();
+  document.getElementById('statusPill').textContent = 'DURAKLATILDI';
+  document.getElementById('statusPill').className = 'status-pill off';
+  toast('İzleme durduruldu. Kollar korundu.');
+}
+
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  poll();
+  pollTimer = setInterval(poll, 5000);
+}
+
+async function poll() {
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    const btnStart = document.getElementById('btnStart');
+    const btnStop = document.getElementById('btnStop');
+    if (data.detecting) {
+      btnStart.disabled = true;
+      btnStart.innerHTML = '<span class="loader"></span>Kollar Tespit Ediliyor...';
+      btnStop.disabled = true;
+      document.getElementById('statusPill').textContent = 'KOL TESPİTİ';
+      document.getElementById('statusPill').className = 'status-pill off';
+      if (data.detect_error) toast('Kol tespiti başarısız: ' + data.detect_error, false);
+      return;
+    }
+    monitoring = data.running;
+    // Onay kutusunu sunucu durumuyla senkronla (sunucu yeniden başladıysa)
+    document.getElementById('signalized').checked = data.signalized !== false;
+    if (data.running) {
+      btnStop.disabled = false;
+      btnStart.disabled = true;
+      btnStart.textContent = 'İzlemeyi Başlat';
+    } else {
+      btnStop.disabled = true;
+      btnStart.disabled = false;
+      btnStart.textContent = 'İzlemeyi Başlat';
+    }
+    const srcLabel = (data.source && data.source !== 'osrm') ? ' — ' + data.source.toUpperCase() : ' — OSRM';
+    document.getElementById('statusPill').textContent = data.running ? ('CANLI İZLEME' + srcLabel) : 'DURAKLATILDI';
+    document.getElementById('statusPill').className = 'status-pill ' + (data.running ? 'on' : 'off');
+    renderCrossroad(data);
+    renderTable(data);
+    renderCounts(data);
+    renderHourly(data);
+    if (data.last_update) {
+      document.getElementById('lastUpdate').textContent = 'Son analiz: ' + data.last_update;
+    }
+  } catch (e) { /* sunucu yanıt vermiyor */ }
+}
+
+function bearingBetween(a, b) {
+  const toRad = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * toRad;
+  const dLng = (b[1] - a[1]) * toRad;
+  const lat1 = a[0] * toRad, lat2 = b[0] * toRad;
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function arrowIcon(angle, color) {
+  return L.divIcon({
+    className: 'arm-arrow',
+    html: '<div style="font-size:24px;line-height:1;color:' + color + ';transform:rotate(' + angle + 'deg);text-shadow:0 0 4px #000,0 0 4px #000">➤</div>',
+    iconSize: [26, 26], iconAnchor: [13, 13]
+  });
+}
+
+function distToCoord(p, coord) {
+  const dLat = p[0] - coord.lat, dLng = p[1] - coord.lon;
+  return dLat * dLat + dLng * dLng;
+}
+
+function renderCrossroad(data) {
+  initMap();
+  if (!data.coord || !data.arms.length) {
+    armLayer.clearLayers();
+    centerMarker.closeTooltip();
+    centerMarker.setStyle({ fillColor: '#3b82f6' });
+    return;
+  }
+  const coord = data.coord;
+  if (!lastCoord || lastCoord.lat !== coord.lat || lastCoord.lon !== coord.lon) {
+    map.setView([coord.lat, coord.lon], 17);
+    lastCoord = coord;
+  }
+  centerMarker.setLatLng([coord.lat, coord.lon]);
+  armLayer.clearLayers();
+  for (let i = 0; i < data.arms.length; i++) {
+    const arm = data.arms[i];
+    const live = data.live[arm.name] || { queue: 0, distance: 0, duration: 0 };
+    // Çizgi rengi TABLO RENGİYLE BİREBİR AYNI: kol sırasına göre sabit palet.
+    // KuzeyDogu tabloda maviyse haritada da mavi, Bati sariysa sari cizilir.
+    const color = armColor(i);
+    const route = (arm.route && arm.route.length > 1)
+      ? arm.route
+      : [[arm.lat, arm.lon], [coord.lat, coord.lon]];
+    L.polyline(route, {
+      color: color, weight: 6, opacity: 0.85
+    }).addTo(armLayer);
+    for (let k = 1; k < route.length - 1; k++) {
+      L.circleMarker(route[k], {
+        radius: 3, color: '#ffffff', weight: 1, fillColor: color, fillOpacity: 0.6
+      }).addTo(armLayer);
+    }
+    // Yön OTOMATİK: ok, trafiğin akış yönünü (koldan kavşak merkezine doğru) gösterir.
+    let aIdx = 0, cIdx = 0, aMax = -1, cMin = 1e18;
+    for (let k = 0; k < route.length; k++) {
+      const d = distToCoord(route[k], coord);
+      if (d < cMin) { cMin = d; cIdx = k; }
+      if (d > aMax) { aMax = d; aIdx = k; }
+    }
+    const near = route[aIdx], towardCenter = route[cIdx];
+    const brg = bearingBetween(near, towardCenter);
+    L.marker(near, { icon: arrowIcon(brg - 90, color) }).addTo(armLayer);
+    const cm = L.circleMarker([arm.lat, arm.lon], {
+      radius: 7, color: '#ffffff', weight: 2, fillColor: color, fillOpacity: 1
+    }).addTo(armLayer);
+    // Cadde adı: kolun renginde ve kalın gösterilsin (trafik rengiyle uyumlu)
+    cm.bindTooltip('<span style="color:' + color + ';font-weight:800;text-shadow:0 0 4px #000,0 0 4px #000">' + armLabel(arm) + '</span>', {
+      permanent: true, direction: 'top', offset: [0, -6]
+    });
+  }
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById('armRows');
+  if (!data.arms.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:#64748b">Kollar bulunamadı.</td></tr>';
+    return;
+  }
+  let html = '';
+  for (let i = 0; i < data.arms.length; i++) {
+    const arm = data.arms[i];
+    const live = data.live[arm.name] || { queue: 0, distance: 0, duration: 0 };
+    let cls = 'q-low', label = 'Az';
+    if (live.queue >= 8) { cls = 'q-high'; label = 'Yoğun'; }
+    else if (live.queue >= 3) { cls = 'q-mid'; label = 'Orta'; }
+    html += `<tr>
+      <td>${armDot(armColor(i))}<strong style="color:${armColor(i)}">${armLabel(arm)}</strong></td>
+      <td>${live.distance} m</td>
+      <td>${live.duration} sn</td>
+      <td><span class="q-badge ${cls}">${label} (${live.queue})</span></td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
+}
+
+function renderCounts(data) {
+  const tbody = document.getElementById('countRows');
+  if (!data.counts || !Object.keys(data.counts).length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:#64748b">Henüz sayım verisi yok.</td></tr>';
+    return;
+  }
+  let html = '';
+  let total = 0;
+  for (let i = 0; i < data.arms.length; i++) {
+    const arm = data.arms[i];
+    const c = data.counts[arm.name] || { passing: 0 };
+    total += c.passing;
+    const lanes = c.lanes || arm.lane_n || 1;
+    let cls = 'q-low';
+    if (c.passing >= 4) cls = 'q-high';
+    else if (c.passing >= 2) cls = 'q-mid';
+    const spd = c.speed_kmh || 0;
+    const spdCls = spd >= 50 ? 'spd-low' : (spd >= 30 ? 'spd-mid' : 'spd-high');
+    html += `<tr>
+      <td>${armDot(armColor(i))}<strong style="color:${armColor(i)}">${armLabel(arm)}</strong></td>
+      <td>${lanes} şerit</td>
+      <td><span class="${spdCls}">${spd} km/h</span></td>
+      <td><span class="q-badge ${cls}">${c.passing} araç</span></td>
+    </tr>`;
+  }
+  html += `<tr style="border-top:2px solid #334155">
+    <td><strong>Toplam</strong></td>
+    <td></td>
+    <td></td>
+    <td><strong>${total} araç</strong></td>
+  </tr>`;
+  tbody.innerHTML = html;
+}
+
+function renderHourly(data) {
+  const tbody = document.getElementById('hourRows');
+  if (!data.hourly || !Object.keys(data.hourly).length) {
+    tbody.innerHTML = '<tr><td colspan="3" style="color:#64748b">Henüz saatlik veri yok.</td></tr>';
+    document.getElementById('hourLabel').textContent = '-';
+    return;
+  }
+  const hours = Object.keys(data.hourly).sort();
+  const lastHour = hours[hours.length - 1];
+  document.getElementById('hourLabel').textContent = hourRange(lastHour);
+  const cur = data.hourly[lastHour] || {};
+  let totals = {};
+  for (const h of hours) {
+    for (const arm of Object.keys(data.hourly[h])) {
+      totals[arm] = (totals[arm] || 0) + (data.hourly[h][arm] || 0);
+    }
+  }
+  let html = '';
+  let curTotal = 0, grandTotal = 0;
+  // 'Bu Saat Geçen Araç' için kollar arasında GÖRELİ sıralama:
+  // en fazla araç -> kırmızı, en az -> yeşil, aradakiler -> sarı
+  const curVals = data.arms.map(a => Math.round(cur[a.name] || 0));
+  const maxCur = Math.max.apply(null, curVals.length ? curVals : [0]);
+  const minCur = Math.min.apply(null, curVals.length ? curVals : [0]);
+  for (let i = 0; i < data.arms.length; i++) {
+    const arm = data.arms[i];
+    const curVal = Math.round(cur[arm.name] || 0);
+    const totVal = Math.round(totals[arm.name] || 0);
+    curTotal += curVal;
+    grandTotal += totVal;
+    let curCls;
+    if (maxCur === minCur) { curCls = 't-yellow'; }        // hepsi eşit -> sarı
+    else if (curVal === maxCur) { curCls = 't-red'; }      // en fazla -> kırmızı
+    else if (curVal === minCur) { curCls = 't-green'; }    // en az -> yeşil
+    else { curCls = 't-yellow'; }                          // ortada -> sarı
+    html += `<tr>
+      <td>${armDot(armColor(i))}<strong style="color:${armColor(i)}">${armLabel(arm)}</strong></td>
+      <td><span class="${curCls}">${curVal} araç</span></td>
+      <td>${totVal} araç</td>
+    </tr>`;
+  }
+  html += `<tr style="border-top:2px solid #334155">
+    <td><strong>Toplam</strong></td>
+    <td><strong>${curTotal} araç</strong></td>
+    <td><strong>${grandTotal} araç</strong></td>
+  </tr>`;
+  tbody.innerHTML = html;
+}
+
+function exportExcel() {
+  const link = document.createElement('a');
+  link.href = '/api/export';
+  link.click();
+  toast('Excel indiriliyor...');
+}
+
+function exportReport() {
+  const link = document.createElement('a');
+  link.href = '/api/report';
+  link.click();
+  toast('Saatlik rapor indiriliyor...');
+}
+
+autoPollTimer = setInterval(poll, 10000);
+poll();
+
+function updateClock() {
+  const d = new Date();
+  const p = n => (n < 10 ? '0' : '') + n;
+  document.getElementById('liveClock').textContent =
+    p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' +
+    p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+updateClock();
+setInterval(updateClock, 1000);
+</script>
+</body>
+</html>
