@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Trafik Sayım ve Yoğunluk Paneli — Darkeaglehome</title>
+<meta name="description" content="Kavşak bazlı canlı trafik sayımı ve yoğunluk izleme paneli. Flask + Leaflet + OSRM, TomTom/HERE/Google desteği ve Excel raporları."/>
+<style>
+  :root{
+    --bg:#070d1a; --panel:#0f172a; --panel2:#111c33; --line:#1e293b;
+    --text:#e2e8f0; --muted:#94a3b8; --blue:#3b82f6; --blue2:#60a5fa;
+    --green:#22c55e; --amber:#f59e0b;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:
+      radial-gradient(1000px 500px at 15% -10%, rgba(59,130,246,.18), transparent 60%),
+      radial-gradient(900px 500px at 90% 0%, rgba(34,197,94,.10), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6;
+  }
+  a{color:var(--blue2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 22px}
+  header{padding:22px 0;border-bottom:1px solid rgba(30,41,59,.7)}
+  header .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .brand{font-weight:800;letter-spacing:.3px;font-size:18px}
+  .brand span{color:var(--blue2)}
+  nav{display:flex;gap:18px;font-size:14px;color:var(--muted)}
+  nav a{color:var(--muted)}
+  nav a:hover{color:var(--text);text-decoration:none}
+  .hero{padding:70px 0 50px;display:grid;grid-template-columns:1.15fr .85fr;gap:44px;align-items:center}
+  .pill{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:#bfdbfe;
+        background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);padding:6px 12px;border-radius:999px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(34,197,94,.15)}
+  h1{font-size:clamp(30px,4.2vw,50px);line-height:1.12;margin:18px 0 14px;letter-spacing:-.8px}
+  h1 span{background:linear-gradient(90deg,#60a5fa,#22c55e);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lead{color:#b7c3d4;font-size:17px;max-width:560px;margin:0 0 26px}
+  .actions{display:flex;gap:12px;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:9px;padding:12px 20px;border-radius:11px;font-weight:700;font-size:14.5px;
+       border:1px solid transparent;transition:.18s}
+  .btn-primary{background:linear-gradient(180deg,#3b82f6,#2563eb);color:#fff;box-shadow:0 10px 30px -12px rgba(37,99,235,.9)}
+  .btn-primary:hover{transform:translateY(-1px);text-decoration:none}
+  .btn-ghost{background:rgba(148,163,184,.08);border-color:#26334a;color:var(--text)}
+  .btn-ghost:hover{background:rgba(148,163,184,.15);text-decoration:none}
+
+  .preview{background:linear-gradient(180deg,#101b31,#0c1526);border:1px solid #22304a;border-radius:16px;
+           padding:16px;box-shadow:0 30px 60px -30px rgba(0,0,0,.9)}
+  .preview-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .preview-title{font-size:12px;font-weight:700;color:#cbd5e1;letter-spacing:.4px;text-transform:uppercase}
+  .preview-tag{font-size:11px;color:#93c5fd;background:rgba(59,130,246,.14);border:1px solid rgba(59,130,246,.3);padding:3px 8px;border-radius:6px}
+  .row{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:9px;background:rgba(148,163,184,.05);margin-bottom:8px;font-size:13.5px}
+  .row:last-child{margin-bottom:0}
+  .row b{font-weight:700;color:#e2e8f0}
+  .row small{color:var(--muted);font-size:12px}
+  .sw{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:9px;vertical-align:middle}
+
+  section{padding:58px 0;border-top:1px solid rgba(30,41,59,.6)}
+  h2{font-size:clamp(23px,2.6vw,31px);margin:0 0 10px;letter-spacing:-.4px}
+  .sub{color:var(--muted);margin:0 0 32px;max-width:720px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .card{background:linear-gradient(180deg,rgba(17,28,51,.9),rgba(12,21,38,.9));border:1px solid #1f2c44;
+        border-radius:14px;padding:20px}
+  .card h3{font-size:15.5px;margin:0 0 8px}
+  .card p{margin:0;color:#a9b7c9;font-size:13.8px}
+  .ico{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;margin-bottom:12px;
+       background:rgba(59,130,246,.14);border:1px solid rgba(59,130,246,.3);font-size:16px}
+
+  .steps{counter-reset:s;display:grid;gap:14px;margin:0;padding:0;list-style:none}
+  .steps li{position:relative;padding:18px 20px 18px 62px;background:rgba(148,163,184,.05);
+            border:1px solid #1f2c44;border-radius:12px;counter-increment:s}
+  .steps li::before{content:counter(s);position:absolute;left:18px;top:16px;width:30px;height:30px;border-radius:50%;
+    display:grid;place-items:center;font-weight:800;font-size:14px;color:#fff;
+    background:linear-gradient(180deg,#3b82f6,#2563eb)}
+  .steps b{display:block;margin-bottom:4px;font-size:15px}
+  .steps span{color:#a9b7c9;font-size:14px}
+  .highlight{border-color:rgba(34,197,94,.45);background:rgba(34,197,94,.07)}
+  .highlight::before{background:linear-gradient(180deg,#22c55e,#16a34a)}
+
+  .note{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.32);border-radius:12px;
+        padding:16px 18px;font-size:14px;color:#fde7c2}
+  .note b{color:#fbbf24}
+
+  table{width:100%;border-collapse:collapse;font-size:13.8px}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid #1f2c44}
+  th{color:#c7d2e0;font-size:12.5px;text-transform:uppercase;letter-spacing:.4px}
+  td code{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);padding:2px 7px;border-radius:5px;font-size:12.5px;color:#bfdbfe}
+  .scroll{overflow-x:auto}
+
+  footer{border-top:1px solid rgba(30,41,59,.6);padding:28px 0;color:var(--muted);font-size:13.5px}
+  footer .wrap{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+
+  @media (max-width:900px){
+    .hero{grid-template-columns:1fr;padding:46px 0 34px}
+    .grid{grid-template-columns:1fr 1fr}
+  }
+  @media (max-width:620px){
+    .grid{grid-template-columns:1fr}
+    nav{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand">Trafik<span>Sayım</span></div>
+    <nav>
+      <a href="#nasil">Nasıl Kullanılır</a>
+      <a href="#ozellikler">Özellikler</a>
+      <a href="#api">API</a>
+      <a href="https://github.com/Darkeaglehome/trafik-sayim-paneli">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap hero">
+  <div>
+    <span class="pill"><span class="dot"></span> Flask · Leaflet · OSRM · SQLite</span>
+    <h1>Kavşağınızı dinleyen <span>canlı trafik sayacı</span></h1>
+    <p class="lead">
+      Haritada kavşak kollarını işaretleyin; uygulama gerçek yol mesafesi ve canlı trafik hızından
+      geçen araç sayısını, kuyruk yükünü ve saatlik toplamları hesaplasın. Sonuçlar Excel raporu olarak iner.
+    </p>
+    <div class="actions">
+      <a class="btn btn-primary" href="https://github.com/Darkeaglehome/trafik-sayim-paneli">Kodu Görüntüle</a>
+      <a class="btn btn-ghost" href="#nasil">Nasıl Kullanılır?</a>
+    </div>
+  </div>
+
+  <div class="preview">
+    <div class="preview-head">
+      <div class="preview-title">Canlı Kavşak Görünümü</div>
+      <div class="preview-tag">örnek veri</div>
+    </div>
+    <div class="row">
+      <span><span class="sw" style="background:#60a5fa"></span><b>Kuzey</b> · Atatürk Caddesi</span>
+      <small>2 şerit · 38 km/s · 24 araç</small>
+    </div>
+    <div class="row">
+      <span><span class="sw" style="background:#f59e0b"></span><b>Doğu</b> · Cumhuriyet Bulvarı</span>
+      <small>3 şerit · 21 km/s · 41 araç</small>
+    </div>
+    <div class="row">
+      <span><span class="sw" style="background:#22c55e"></span><b>Güney</b> · Okul Sokak</span>
+      <small>1 şerit · 52 km/s · 9 araç</small>
+    </div>
+    <div class="row">
+      <span><span class="sw" style="background:#ef4444"></span><b>Batı</b> · Sanayi Yolu</span>
+      <small>2 şerit · 14 km/s · 57 araç</small>
+    </div>
+  </div>
+</div>
+
+<section id="nasil">
+  <div class="wrap">
+    <h2>Nasıl kullanılır?</h2>
+    <p class="sub">Kurulumdan sonra tüm iş akışı üç adımda tamamlanır.</p>
+    <ol class="steps">
+      <li class="highlight">
+        <b>Yolun şerit yönüne tıklayın</b>
+        <span>Haritada <strong>yolun/şeridin üzerine, o kolun gidiş yönünde tıklamanız yeterli.</strong>
+        Her tıklama bir kol noktası ekler ve noktanın altındaki cadde adı otomatik bulunur.
+        Kavşağın 3–4 kolu için birer kez tıklayın.</span>
+      </li>
+      <li>
+        <b>Kolları ekleyip sağlayıcıyı seçin</b>
+        <span>"Kolları Ekle" ile noktalar kola dönüşür ve gerçek yönlerine göre adlandırılır.
+        Ücretsiz kullanım için OSRM; TomTom / HERE / Google için API anahtarı girin.</span>
+      </li>
+      <li>
+        <b>İzlemeyi başlatın ve raporu indirin</b>
+        <span>Panel 5–60 saniyede bir güncellenir. "Excel'e Aktar" ile saat bazlı sayım,
+        cadde özeti, ham loglar ve pivot tablo içeren dosyayı alırsınız.</span>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section id="ozellikler">
+  <div class="wrap">
+    <h2>Özellikler</h2>
+    <p class="sub">Ücretsiz OSRM verisiyle çalışır; API anahtarı girildiğinde canlı trafik hızına geçer.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="ico">🗺️</div>
+        <h3>Gerçek yol ağı</h3>
+        <p>OSRM Table API ile tüm kollar arasında mesafe/süre matrisi ve rota geometrisi tek istekte alınır.</p>
+      </div>
+      <div class="card">
+        <div class="ico">📡</div>
+        <h3>Canlı trafik</h3>
+        <p>TomTom, HERE ve Google Routes desteği. Anahtar yoksa veya servis düşerse otomatik OSRM'e döner.</p>
+      </div>
+      <div class="card">
+        <div class="ico">🚗</div>
+        <h3>Hıza bağlı sayım</h3>
+        <p>Greenshields temel diyagramı: yavaşlayan kolda yoğunluk artar, akış tepe yapar, kilitlenmede düşer.</p>
+      </div>
+      <div class="card">
+        <div class="ico">🚦</div>
+        <h3>Sinyal faktörü</h3>
+        <p>Sinyalize kavşakta %45 yeşil süre payı, sinyalsizde kesintisiz geçiş; çalışırken anında değiştirilebilir.</p>
+      </div>
+      <div class="card">
+        <div class="ico">📊</div>
+        <h3>Excel + pivot</h3>
+        <p>Saat bazlı sayım, cadde özeti, özet, ham loglar ve gerçek pivot tablo tek dosyada.</p>
+      </div>
+      <div class="card">
+        <div class="ico">💾</div>
+        <h3>SQLite kayıt</h3>
+        <p>60 saniyelik pencerelerde biriken araç toplamları kalıcı olarak saklanır.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="api">
+  <div class="wrap">
+    <h2>API uç noktaları</h2>
+    <p class="sub">Panelin tamamı bu JSON API üzerinden çalışır; kendi arayüzünüzü de bağlayabilirsiniz.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Metot</th><th>Yol</th><th>Açıklama</th></tr></thead>
+        <tbody>
+          <tr><td>POST</td><td><code>/api/detect</code></td><td>İşaretlenen noktalardan kolları tespit eder</td></tr>
+          <tr><td>POST</td><td><code>/api/start</code></td><td>İzlemeyi başlatır (coords, provider, api_key, signalized)</td></tr>
+          <tr><td>POST</td><td><code>/api/stop</code></td><td>İzlemeyi duraklatır, kollar korunur</td></tr>
+          <tr><td>GET</td><td><code>/api/status</code></td><td>Canlı durum, kollar, sayaçlar, saatlik veriler</td></tr>
+          <tr><td>GET</td><td><code>/api/export</code></td><td>Detaylı Excel (log + saatlik + pivot)</td></tr>
+          <tr><td>GET</td><td><code>/api/report</code></td><td>Saatlik özet Excel raporu</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:22px">
+      <b>Not:</b> Bu sayfa GitHub Pages üzerinde yayınlanan statik tanıtımdır; Flask uygulaması sunucu tarafı
+      (Python + SQLite + arka plan iş parçacığı) gerektirdiği için burada çalışmaz. Gerçek paneli çalıştırmak için
+      depodaki kurulum adımlarını izleyin: <code>pip install -r requirements.txt</code> → <code>python app.py</code>.
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>© 2026 <a href="https://github.com/Darkeaglehome">Darkeaglehome</a> · MIT Lisansı</div>
+    <div><a href="https://github.com/Darkeaglehome/trafik-sayim-paneli">github.com/Darkeaglehome/trafik-sayim-paneli</a></div>
+  </div>
+</footer>
+
+</body>
+</html>
